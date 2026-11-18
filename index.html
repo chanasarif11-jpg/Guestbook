@@ -1,344 +1,189 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="cyber">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Muhammad Anas — Blockchain Guestbook (Sepolia)</title>
-    <meta name="description" content="A decentralized Guestbook DApp running on Ethereum Sepolia Testnet. Leave your immutable signature and message on the blockchain.">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20width=%22100%22%20height=%22100%22><text y=%22.9em%22 font-size=%2290%22>⛓️</text></svg>">
-    
-    <!-- Google Fonts -->
+    <title>Web3 Decentralized Guestbook | CY414</title>
+    <!-- Modern Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    
-    <!-- Stylesheet -->
-    <link rel="stylesheet" href="styles.css">
-    
-    <!-- Web3.js Library (Local fallback + CDN) -->
-    <script src="lib/web3.min.js"></script>
-    <script>
-        // Fallback to CDN if local script is not loaded
-        if (typeof window.Web3 === 'undefined') {
-            document.write('<script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"><\/script>');
-        }
-    </script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Application Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Ethers.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 </head>
 <body>
-    <!-- Background glowing ambient lights -->
-    <div class="ambient-glow glow-1"></div>
-    <div class="ambient-glow glow-2"></div>
-    <div class="ambient-glow glow-3"></div>
+    <!-- Ambient Cyber Background Grid & Dynamic Glowing Orbs -->
+    <div class="cyber-grid"></div>
+    <div class="glow-bg">
+        <div class="ambient-orb orb-1"></div>
+        <div class="ambient-orb orb-2"></div>
+        <div class="ambient-orb orb-3"></div>
+    </div>
 
-    <div class="app-wrapper">
-        <!-- Navigation Bar -->
-        <header class="navbar">
-            <div class="nav-brand">
-                <div class="brand-icon">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                    </svg>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="logo-area">
+                <div class="logo-cube-wrapper">
+                    <i class="fa-solid fa-cube glowing-icon"></i>
                 </div>
-                <div class="brand-text">
-                    <span class="brand-title">Muhammad Anas</span>
-                    <span class="brand-subtitle">Blockchain Guestbook</span>
+                <div class="logo-text-group">
+                    <h1>ChainGuest</h1>
+                    <span class="network-badge">
+                        <span class="pulse-dot"></span> Sepolia Testnet
+                    </span>
                 </div>
             </div>
 
-            <div class="nav-actions">
-                <!-- Network Badge -->
-                <div id="networkBadge" class="badge badge-network">
-                    <span class="status-dot"></span>
-                    <span id="networkName">Checking Network...</span>
+            <div class="header-actions">
+                <!-- Theme Switcher -->
+                <div class="theme-selector-wrapper" id="themeSelector">
+                    <button type="button" class="theme-pill-btn active" data-set-theme="cyber" title="Cyber Neon Theme">
+                        <i class="fa-solid fa-bolt"></i> Cyber
+                    </button>
+                    <button type="button" class="theme-pill-btn" data-set-theme="emerald" title="Emerald & Gold Theme">
+                        <i class="fa-solid fa-gem"></i> Emerald
+                    </button>
+                    <button type="button" class="theme-pill-btn" data-set-theme="synthwave" title="Sunset Synthwave Theme">
+                        <i class="fa-solid fa-fire"></i> Synth
+                    </button>
+                    <button type="button" class="theme-pill-btn" data-set-theme="frost" title="Solar Frost Theme">
+                        <i class="fa-solid fa-sun"></i> Frost
+                    </button>
                 </div>
 
-                <!-- Contract Address Button -->
-                <button id="openContractModalBtn" class="badge badge-contract" title="View or edit contract address">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                    </svg>
-                    <span>Contract: <strong id="navContractAddr">0x...</strong></span>
-                </button>
-
-                <!-- Wallet Connect Button -->
-                <button id="connectWalletBtn" class="btn btn-connect">
-                    <svg class="wallet-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
-                        <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path>
-                        <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>
-                    </svg>
-                    <span id="connectWalletText">Connect MetaMask</span>
+                <!-- Connect Wallet Button -->
+                <button id="connectWalletBtn" class="btn primary-btn">
+                    <i class="fa-solid fa-wallet"></i> <span>Connect Wallet</span>
                 </button>
             </div>
         </header>
 
-        <!-- Main Container -->
-        <main class="main-content">
-            <!-- Hero Section -->
-            <section class="hero-section">
-                <div class="hero-pill">
-                    <span class="pill-badge">Sepolia Testnet</span>
-                    <span>Smart Contract Guestbook DApp</span>
-                </div>
-                <h1 class="hero-title">
-                    Leave Your Permanent Mark on the <span class="gradient-text">Ethereum Blockchain</span>
-                </h1>
-                <p class="hero-description">
-                    Connect your MetaMask wallet to submit a verified, immutable guestbook message. 
-                    Every entry is signed and permanently stored on the Sepolia testnet via smart contract write calls (<code>.send()</code>) 
-                    and loaded via read calls (<code>.call()</code>).
-                </p>
-
-                <!-- Stats Bar -->
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Total Messages</div>
-                        <div class="stat-value" id="statTotalMessages">0</div>
-                        <div class="stat-meta">Retrieved via <code>getTotalMessages().call()</code></div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Active Network</div>
-                        <div class="stat-value text-indigo" id="statNetwork">Sepolia</div>
-                        <div class="stat-meta">Chain ID: 11155111 (0xaa36a7)</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Contract Status</div>
-                        <div class="stat-value text-emerald" id="statContractStatus">Connected</div>
-                        <div class="stat-meta" id="statContractMeta">Sepolia Etherscan Verified</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Network Warning Banner (Hidden by default) -->
-            <div id="networkWarning" class="alert-banner alert-warning" style="display: none;">
-                <div class="alert-content">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
-                        <line x1="12" y1="9" x2="12" y2="13"></line>
-                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                    </svg>
-                    <div>
-                        <strong>Wrong Network Detected!</strong>
-                        <span>Please switch your wallet to Ethereum Sepolia Testnet to interact with this Guestbook.</span>
-                    </div>
-                </div>
-                <button id="switchNetworkBtn" class="btn btn-sm btn-warning">Switch to Sepolia</button>
+        <!-- Hero Section -->
+        <section class="hero-card">
+            <div class="hero-tag">
+                <i class="fa-solid fa-shield-halved"></i> Immutable Web3 Protocol v2.0
             </div>
-
-            <!-- Main App Two-Column Grid -->
-            <div class="content-grid">
-                <!-- Column 1: Submission Form -->
-                <div class="grid-col form-col">
-                    <div class="card form-card">
-                        <div class="card-header">
-                            <div class="card-title-group">
-                                <h2 class="card-title">
-                                    <span class="icon-bubble">✍️</span>
-                                    Sign the Guestbook
-                                </h2>
-                                <p class="card-subtitle">Submit a message to be recorded on the blockchain.</p>
-                            </div>
-                        </div>
-
-                        <form id="guestbookForm" class="guestbook-form" novalidate>
-                            <!-- Visitor Name Input -->
-                            <div class="form-group">
-                                <div class="form-label-row">
-                                    <label for="visitorNameInput" class="form-label">Visitor Name / Handle <span class="required">*</span></label>
-                                    <span id="nameCounter" class="char-counter">0 / 50</span>
-                                </div>
-                                <div class="input-wrapper">
-                                    <input 
-                                        type="text" 
-                                        id="visitorNameInput" 
-                                        class="form-input" 
-                                        placeholder="e.g., Muhammad Anas or Alice" 
-                                        maxlength="50" 
-                                        required 
-                                        autocomplete="name"
-                                    >
-                                </div>
-                                <span class="form-error-msg" id="nameError"></span>
-                            </div>
-
-                            <!-- Message Textarea -->
-                            <div class="form-group">
-                                <div class="form-label-row">
-                                    <label for="messageInput" class="form-label">Message <span class="required">*</span></label>
-                                    <span id="charCounter" class="char-counter">0 / 200</span>
-                                </div>
-                                <div class="input-wrapper">
-                                    <textarea 
-                                        id="messageInput" 
-                                        class="form-textarea" 
-                                        placeholder="Write your permanent message on Sepolia blockchain (maximum 200 characters)..." 
-                                        rows="4" 
-                                        maxlength="200" 
-                                        required
-                                    ></textarea>
-                                </div>
-                                <div class="field-hints">
-                                    <span class="hint-text">Max 200 characters strictly enforced by the smart contract.</span>
-                                    <span class="form-error-msg" id="messageError"></span>
-                                </div>
-                            </div>
-
-                            <!-- Wallet Status Prompt if not connected -->
-                            <div id="walletPrompt" class="wallet-prompt-box">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <line x1="12" y1="16" x2="12" y2="12"></line>
-                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                                </svg>
-                                <span>Please connect your MetaMask wallet on Sepolia to submit a message.</span>
-                            </div>
-
-                            <!-- Submit Button -->
-                            <button type="submit" id="submitBtn" class="btn btn-primary btn-block">
-                                <span class="btn-spinner" id="btnSpinner" style="display: none;"></span>
-                                <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                                </svg>
-                                <span id="submitBtnText">Sign Guestbook (.send())</span>
-                            </button>
-                        </form>
-
-                        <!-- Transaction Notification Card -->
-                        <div id="txInfoCard" class="tx-card" style="display: none;">
-                            <div class="tx-card-header">
-                                <span class="tx-status-badge" id="txStatusBadge">Processing</span>
-                                <span class="tx-time" id="txTime">Just now</span>
-                            </div>
-                            <div class="tx-card-body">
-                                <p id="txStatusMessage" class="tx-message">Waiting for transaction confirmation in MetaMask...</p>
-                                
-                                <div id="txHashRow" class="tx-hash-container" style="display: none;">
-                                    <span class="tx-hash-label">Transaction Hash:</span>
-                                    <div class="tx-hash-pill">
-                                        <code id="txHashText">0x000...</code>
-                                        <button id="copyTxHashBtn" class="icon-btn" title="Copy Transaction Hash">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                    <a id="etherscanTxLink" href="#" target="_blank" rel="noopener noreferrer" class="etherscan-link">
-                                        View on Sepolia Etherscan ↗
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            <h2>Decentralized Blockchain Guestbook</h2>
+            <p>Leave an immutable message etched permanently onto the Ethereum Sepolia blockchain. Connect your MetaMask wallet, sign the ledger, and view your verified transactions live on-chain.</p>
+            
+            <!-- Live Protocol Stats Strip -->
+            <div class="stats-dashboard">
+                <div class="stat-box">
+                    <i class="fa-solid fa-signature stat-icon"></i>
+                    <span class="stat-label">Signatures</span>
+                    <span class="stat-value" id="messageCount">0</span>
                 </div>
-
-                <!-- Column 2: Messages Wall -->
-                <div class="grid-col messages-col">
-                    <div class="card messages-card">
-                        <div class="card-header messages-header">
-                            <div class="card-title-group">
-                                <h2 class="card-title">
-                                    <span class="icon-bubble">💬</span>
-                                    Guestbook Wall
-                                    <span id="messagesCountBadge" class="count-pill">0</span>
-                                </h2>
-                                <p class="card-subtitle">Latest messages displayed first (retrieved via <code>.call()</code>).</p>
-                            </div>
-                            <div class="header-actions">
-                                <button id="refreshBtn" class="btn btn-secondary btn-sm" title="Refresh messages from blockchain">
-                                    <svg id="refreshIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="23 4 23 10 17 10"></polyline>
-                                        <polyline points="1 20 1 14 7 14"></polyline>
-                                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                                    </svg>
-                                    <span>Refresh</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Messages Container -->
-                        <div id="messagesContainer" class="messages-list">
-                            <!-- Loading Skeleton State -->
-                            <div class="skeleton-card">
-                                <div class="skeleton skeleton-header"></div>
-                                <div class="skeleton skeleton-body"></div>
-                                <div class="skeleton skeleton-footer"></div>
-                            </div>
-                        </div>
-
-                        <!-- Empty State (Hidden initially) -->
-                        <div id="emptyState" class="empty-state" style="display: none;">
-                            <div class="empty-icon">📭</div>
-                            <h3>No Messages Yet</h3>
-                            <p>Be the first visitor to sign Muhammad Anas's guestbook on the blockchain!</p>
-                        </div>
-                    </div>
+                <div class="stat-box">
+                    <i class="fa-solid fa-network-wired stat-icon"></i>
+                    <span class="stat-label">Network</span>
+                    <span class="stat-value">Sepolia (11155111)</span>
+                </div>
+                <div class="stat-box">
+                    <i class="fa-solid fa-file-contract stat-icon"></i>
+                    <span class="stat-label">Contract</span>
+                    <span class="stat-value">Verified ✓</span>
+                </div>
+                <div class="stat-box">
+                    <i class="fa-solid fa-gas-pump stat-icon"></i>
+                    <span class="stat-label">Gas Engine</span>
+                    <span class="stat-value">EIP-1559 ⚡</span>
                 </div>
             </div>
-        </main>
+        </section>
 
-        <!-- Footer -->
-        <footer class="app-footer">
-            <div class="footer-content">
-                <div class="footer-left">
-                    <div class="footer-brand">Muhammad Anas — Blockchain Guestbook</div>
-                    <p class="footer-sub">Final Project Deliverable • Sepolia Testnet DApp • Netlify Published</p>
+        <!-- Main Grid Layout -->
+        <div class="main-grid">
+            <!-- Sign Form Column -->
+            <div class="card form-card">
+                <div class="card-header-styled">
+                    <h3><i class="fa-solid fa-pen-nib"></i> Sign the Guestbook</h3>
+                    <span class="section-pill"><i class="fa-solid fa-lock"></i> Permanent Write</span>
                 </div>
-                <div class="footer-links">
-                    <a id="footerContractLink" href="https://sepolia.etherscan.io" target="_blank" rel="noopener noreferrer">Smart Contract ↗</a>
-                    <a href="https://sepolia.etherscan.io" target="_blank" rel="noopener noreferrer">Sepolia Explorer ↗</a>
-                    <a href="https://sepoliafaucet.com" target="_blank" rel="noopener noreferrer">Sepolia Faucet ↗</a>
-                </div>
-            </div>
-        </footer>
-    </div>
 
-    <!-- Contract Address Settings Modal -->
-    <div id="contractModal" class="modal-backdrop" style="display: none;">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3>Smart Contract Settings</h3>
-                <button id="closeContractModalBtn" class="close-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p class="modal-text">
-                    You can specify your deployed Sepolia contract address below. 
-                    This allows connecting to any newly deployed instance without code changes.
-                </p>
-                <div class="form-group">
-                    <label for="customContractInput" class="form-label">Contract Address (Sepolia):</label>
-                    <input 
-                        type="text" 
-                        id="customContractInput" 
-                        class="form-input font-mono" 
-                        placeholder="0x..." 
-                        spellcheck="false"
-                    >
-                    <span id="contractModalError" class="form-error-msg"></span>
+                <form id="guestbookForm">
+                    <div class="input-group">
+                        <label for="visitorName">
+                            <span>Visitor Name</span>
+                        </label>
+                        <div class="input-icon-wrapper">
+                            <i class="fa-regular fa-user"></i>
+                            <input type="text" id="visitorName" placeholder="e.g. Mohib Ul Hassan" required autocomplete="off">
+                        </div>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="visitorMessage">
+                            <span>Message</span>
+                            <div class="char-counter-container">
+                                <div class="char-bar-track">
+                                    <div class="char-bar-fill" id="charBarFill"></div>
+                                </div>
+                                <span class="char-counter">(<span id="charCount">0</span>/200)</span>
+                            </div>
+                        </label>
+                        <div class="input-icon-wrapper">
+                            <i class="fa-regular fa-comment-dots"></i>
+                            <textarea id="visitorMessage" rows="4" maxlength="200" placeholder="Write your permanent message here (max 200 chars)..." required></textarea>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="submitBtn" class="btn accent-btn" disabled>
+                        <i class="fa-solid fa-paper-plane"></i> <span>Submit to Blockchain</span>
+                    </button>
+                </form>
+
+                <!-- Sample Preview Toggle for Demonstrations -->
+                <div class="preview-helper-wrap">
+                    <button type="button" id="previewDemoBtn" class="demo-link-btn">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Toggle Sample Ledger Entries
+                    </button>
                 </div>
-                <div class="modal-info-box">
-                    <strong>Default / Compiled Contract:</strong>
-                    <code id="defaultContractDisplay">0x...</code>
-                </div>
+                
+                <!-- Notification Area -->
+                <div id="notificationArea" class="hidden"></div>
             </div>
-            <div class="modal-footer">
-                <button id="resetContractBtn" class="btn btn-secondary btn-sm">Reset Default</button>
-                <div class="modal-footer-actions">
-                    <button id="cancelContractModalBtn" class="btn btn-secondary">Cancel</button>
-                    <button id="saveContractModalBtn" class="btn btn-primary">Save & Reload</button>
+
+            <!-- Messages Stream Column -->
+            <div class="card feed-card">
+                <div class="feed-header">
+                    <div class="feed-title-wrap">
+                        <h3><i class="fa-solid fa-stream"></i> Blockchain Ledger</h3>
+                        <span class="section-pill" id="feedStatusPill">Live Blocks</span>
+                    </div>
+                    <div class="feed-actions">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="searchInput" placeholder="Search ledger...">
+                        </div>
+                        <button id="refreshBtn" class="icon-btn" title="Refresh Messages">
+                            <i class="fa-solid fa-rotate"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="loadingSpinner" class="hidden">
+                    <i class="fa-solid fa-spinner fa-spin"></i> Fetching on-chain records...
+                </div>
+
+                <div id="messagesContainer" class="messages-list">
+                    <!-- Dynamic Messages Appended Here -->
+                    <div class="empty-state">
+                        <div class="empty-icon-wrap">
+                            <i class="fa-solid fa-cube"></i>
+                        </div>
+                        <p>No messages recorded yet or wallet not connected. Connect MetaMask to view ledger blocks.</p>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Toast Notification Container -->
-    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
-
-    <!-- Application Scripts -->
-    <script src="config.js"></script>
+    <!-- Application Script -->
     <script src="app.js"></script>
 </body>
 </html>

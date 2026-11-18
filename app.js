@@ -1,806 +1,560 @@
-/**
- * Muhammad Anas - Blockchain Guestbook
- * Main Application Logic (Web3.js + MetaMask)
- */
+// Smart Contract Configuration
+const CONTRACT_ADDRESS = "0x133607EB04474eB1e57c1316C4f1a1B4992168b6"; // Replace with your Sepolia deployment address
+const CONTRACT_ABI = [
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "sender",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "name",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "message",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "timestamp",
+				"type": "uint256"
+			}
+		],
+		"name": "NewMessage",
+		"type": "event"
+	},
+	{
+		"inputs": [],
+		"name": "getAllMessages",
+		"outputs": [
+			{
+				"components": [
+					{
+						"internalType": "address",
+						"name": "sender",
+						"type": "address"
+					},
+					{
+						"internalType": "string",
+						"name": "name",
+						"type": "string"
+					},
+					{
+						"internalType": "string",
+						"name": "message",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					}
+				],
+				"internalType": "struct Guestbook.Message[]",
+				"name": "",
+				"type": "tuple[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "getTotalMessages",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "messages",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "sender",
+				"type": "address"
+			},
+			{
+				"internalType": "string",
+				"name": "name",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "message",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "timestamp",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_name",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "_message",
+				"type": "string"
+			}
+		],
+		"name": "signGuestbook",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	}
+];
 
-(function() {
-    'use strict';
+let provider;
+let signer;
+let contract;
+let userAddress = null;
+let currentLoadedMessages = [];
+let isDemoActive = false;
 
-    const config = window.GUESTBOOK_CONFIG || {};
-    const {
-        DEFAULT_CONTRACT_ADDRESS,
-        SEPOLIA_CHAIN_ID,
-        SEPOLIA_CHAIN_ID_DECIMAL,
-        SEPOLIA_NETWORK_PARAMS,
-        CONTRACT_ABI,
-        getActiveContractAddress,
-        setActiveContractAddress
-    } = config;
+// DOM Elements
+const connectWalletBtn = document.getElementById("connectWalletBtn");
+const guestbookForm = document.getElementById("guestbookForm");
+const visitorNameInput = document.getElementById("visitorName");
+const visitorMessageInput = document.getElementById("visitorMessage");
+const charCountSpan = document.getElementById("charCount");
+const charBarFill = document.getElementById("charBarFill");
+const submitBtn = document.getElementById("submitBtn");
+const messageCountSpan = document.getElementById("messageCount");
+const messagesContainer = document.getElementById("messagesContainer");
+const notificationArea = document.getElementById("notificationArea");
+const refreshBtn = document.getElementById("refreshBtn");
+const loadingSpinner = document.getElementById("loadingSpinner");
+const searchInput = document.getElementById("searchInput");
+const previewDemoBtn = document.getElementById("previewDemoBtn");
+const feedStatusPill = document.getElementById("feedStatusPill");
 
-    // Application State
-    let web3Instance = null;
-    let guestbookContract = null;
-    let currentAccount = null;
-    let currentChainId = null;
-    let activeContractAddress = getActiveContractAddress ? getActiveContractAddress() : DEFAULT_CONTRACT_ADDRESS;
-    let isSubmitting = false;
+// -----------------------------------------------------------------------------
+// 1. Theme Management System
+// -----------------------------------------------------------------------------
+function initTheme() {
+    const savedTheme = localStorage.getItem("chainguest_theme") || "cyber";
+    setTheme(savedTheme);
 
-    // DOM Elements
-    const connectWalletBtn = document.getElementById('connectWalletBtn');
-    const connectWalletText = document.getElementById('connectWalletText');
-    const networkBadge = document.getElementById('networkBadge');
-    const networkName = document.getElementById('networkName');
-    const networkWarning = document.getElementById('networkWarning');
-    const switchNetworkBtn = document.getElementById('switchNetworkBtn');
-    const navContractAddr = document.getElementById('navContractAddr');
-    const footerContractLink = document.getElementById('footerContractLink');
-
-    // Stats Elements
-    const statTotalMessages = document.getElementById('statTotalMessages');
-    const statNetwork = document.getElementById('statNetwork');
-    const statContractStatus = document.getElementById('statContractStatus');
-    const statContractMeta = document.getElementById('statContractMeta');
-
-    // Form Elements
-    const guestbookForm = document.getElementById('guestbookForm');
-    const visitorNameInput = document.getElementById('visitorNameInput');
-    const messageInput = document.getElementById('messageInput');
-    const nameCounter = document.getElementById('nameCounter');
-    const charCounter = document.getElementById('charCounter');
-    const nameError = document.getElementById('nameError');
-    const messageError = document.getElementById('messageError');
-    const submitBtn = document.getElementById('submitBtn');
-    const submitBtnText = document.getElementById('submitBtnText');
-    const btnSpinner = document.getElementById('btnSpinner');
-    const walletPrompt = document.getElementById('walletPrompt');
-
-    // Transaction Card Elements
-    const txInfoCard = document.getElementById('txInfoCard');
-    const txStatusBadge = document.getElementById('txStatusBadge');
-    const txStatusMessage = document.getElementById('txStatusMessage');
-    const txTime = document.getElementById('txTime');
-    const txHashRow = document.getElementById('txHashRow');
-    const txHashText = document.getElementById('txHashText');
-    const copyTxHashBtn = document.getElementById('copyTxHashBtn');
-    const etherscanTxLink = document.getElementById('etherscanTxLink');
-
-    // Messages Wall Elements
-    const messagesContainer = document.getElementById('messagesContainer');
-    const messagesCountBadge = document.getElementById('messagesCountBadge');
-    const refreshBtn = document.getElementById('refreshBtn');
-    const refreshIcon = document.getElementById('refreshIcon');
-    const emptyState = document.getElementById('emptyState');
-
-    // Contract Settings Modal
-    const contractModal = document.getElementById('contractModal');
-    const openContractModalBtn = document.getElementById('openContractModalBtn');
-    const closeContractModalBtn = document.getElementById('closeContractModalBtn');
-    const cancelContractModalBtn = document.getElementById('cancelContractModalBtn');
-    const saveContractModalBtn = document.getElementById('saveContractModalBtn');
-    const resetContractBtn = document.getElementById('resetContractBtn');
-    const customContractInput = document.getElementById('customContractInput');
-    const defaultContractDisplay = document.getElementById('defaultContractDisplay');
-    const contractModalError = document.getElementById('contractModalError');
-
-    // Toast Container
-    const toastContainer = document.getElementById('toastContainer');
-
-    // ============================================================================
-    // Initialization
-    // ============================================================================
-
-    window.addEventListener('DOMContentLoaded', async () => {
-        updateContractAddressUI();
-        setupEventListeners();
-        await initWeb3Provider();
-        await refreshMessagesWall();
+    const themeButtons = document.querySelectorAll("[data-set-theme]");
+    themeButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+            const theme = btn.getAttribute("data-set-theme");
+            setTheme(theme);
+        });
     });
+}
 
-    /**
-     * Initialize Web3 provider:
-     * 1. If MetaMask (window.ethereum) is available, use it.
-     * 2. If not, fallback to public Sepolia RPC for read-only viewing.
-     */
-    async function initWeb3Provider() {
-        if (typeof window.Web3 === 'undefined') {
-            console.error('Web3.js library not loaded yet.');
-            showToast('Loading', 'Loading Web3 library...', 'info');
-            return;
-        }
+function setTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("chainguest_theme", theme);
 
-        if (typeof window.ethereum !== 'undefined') {
-            try {
-                web3Instance = new window.Web3(window.ethereum);
-
-                // Check already connected accounts
-                const accounts = await web3Instance.eth.getAccounts();
-                if (accounts && accounts.length > 0) {
-                    handleAccountsChanged(accounts);
-                } else {
-                    updateWalletUI(null);
-                }
-
-                // Check chain
-                const chainId = await web3Instance.eth.getChainId();
-                handleChainChanged(chainId);
-
-                // MetaMask Event Listeners
-                window.ethereum.on('accountsChanged', handleAccountsChanged);
-                window.ethereum.on('chainChanged', (newChainId) => {
-                    handleChainChanged(newChainId);
-                    refreshMessagesWall();
-                });
-            } catch (err) {
-                console.warn('Error querying MetaMask state:', err);
-                fallbackToPublicRpc();
-            }
+    // Update active class on buttons
+    document.querySelectorAll("[data-set-theme]").forEach(btn => {
+        if (btn.getAttribute("data-set-theme") === theme) {
+            btn.classList.add("active");
         } else {
-            fallbackToPublicRpc();
+            btn.classList.remove("active");
         }
+    });
+}
 
-        instantiateContract();
+initTheme();
+
+// -----------------------------------------------------------------------------
+// 2. Character Counter & Progress Bar
+// -----------------------------------------------------------------------------
+visitorMessageInput.addEventListener("input", (e) => {
+    const len = e.target.value.length;
+    charCountSpan.textContent = len;
+    
+    if (charBarFill) {
+        const percent = Math.min((len / 200) * 100, 100);
+        charBarFill.style.width = `${percent}%`;
+        
+        if (percent > 90) {
+            charBarFill.style.backgroundColor = "var(--error-border)";
+        } else if (percent > 75) {
+            charBarFill.style.backgroundColor = "var(--accent-secondary)";
+        } else {
+            charBarFill.style.backgroundColor = "var(--accent)";
+        }
     }
+});
 
-    function fallbackToPublicRpc() {
-        console.log('Using public Sepolia RPC for read-only access.');
-        const fallbackRpc = SEPOLIA_NETWORK_PARAMS.rpcUrls[0];
+// -----------------------------------------------------------------------------
+// 3. Connect MetaMask Wallet
+// -----------------------------------------------------------------------------
+connectWalletBtn.addEventListener("click", async () => {
+    if (typeof window.ethereum !== "undefined") {
         try {
-            web3Instance = new window.Web3(new window.Web3.providers.HttpProvider(fallbackRpc));
-            updateWalletUI(null);
-            setNetworkStatus('Sepolia (Public Read-Only)', true);
-            statNetwork.textContent = 'Sepolia (Read)';
-            statNetwork.className = 'stat-value text-indigo';
-        } catch (e) {
-            console.error('Failed to initialize fallback RPC:', e);
-            setNetworkStatus('RPC Disconnected', false);
-        }
-    }
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            await provider.send("eth_requestAccounts", []);
+            signer = provider.getSigner();
+            userAddress = await signer.getAddress();
+            
+            contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
-    /**
-     * Instantiate the Guestbook smart contract
-     */
-    function instantiateContract() {
-        if (!web3Instance) return;
-
-        if (!activeContractAddress || !/^0x[a-fA-F0-9]{40}$/.test(activeContractAddress)) {
-            statContractStatus.textContent = 'Address Required';
-            statContractStatus.className = 'stat-value text-amber';
-            statContractMeta.textContent = 'Click to set contract';
-            return;
-        }
-
-        try {
-            guestbookContract = new web3Instance.eth.Contract(CONTRACT_ABI, activeContractAddress);
-            statContractStatus.textContent = 'Ready';
-            statContractStatus.className = 'stat-value text-emerald';
-            statContractMeta.textContent = formatTruncated(activeContractAddress);
-        } catch (err) {
-            console.error('Error instantiating contract:', err);
-            statContractStatus.textContent = 'Config Error';
-            statContractStatus.className = 'stat-value text-rose';
-            statContractMeta.textContent = 'Invalid address';
-        }
-    }
-
-    // ============================================================================
-    // Wallet & Network Handling
-    // ============================================================================
-
-    async function connectWallet() {
-        if (typeof window.ethereum === 'undefined') {
-            showToast('MetaMask Required', 'Please install MetaMask extension to submit messages.', 'error');
-            window.open('https://metamask.io/download/', '_blank');
-            return;
-        }
-
-        try {
-            connectWalletBtn.disabled = true;
-            connectWalletText.textContent = 'Connecting...';
-
-            // Ensure web3Instance is wired to window.ethereum
-            web3Instance = new window.Web3(window.ethereum);
-
-            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            handleAccountsChanged(accounts);
-
-            const chainId = await web3Instance.eth.getChainId();
-            if (Number(chainId) !== SEPOLIA_CHAIN_ID_DECIMAL) {
-                await promptSwitchToSepolia();
-            } else {
-                showToast('Wallet Connected', `Connected as ${formatTruncated(accounts[0])}`, 'success');
-            }
-
-            instantiateContract();
-            await refreshMessagesWall();
-        } catch (err) {
-            console.error('Error connecting wallet:', err);
-            if (err.code === 4001) {
-                showToast('Connection Cancelled', 'You rejected the MetaMask connection request.', 'info');
-            } else {
-                showToast('Connection Error', err.message || 'Failed to connect wallet.', 'error');
-            }
-        } finally {
-            connectWalletBtn.disabled = false;
-        }
-    }
-
-    function handleAccountsChanged(accounts) {
-        if (!accounts || accounts.length === 0) {
-            currentAccount = null;
-            updateWalletUI(null);
-        } else {
-            currentAccount = accounts[0];
-            updateWalletUI(currentAccount);
-        }
-        updateSubmitButtonState();
-    }
-
-    function handleChainChanged(chainId) {
-        currentChainId = typeof chainId === 'string' ? parseInt(chainId, 16) : Number(chainId);
-        const isSepolia = currentChainId === SEPOLIA_CHAIN_ID_DECIMAL;
-
-        if (isSepolia) {
-            setNetworkStatus('Sepolia Testnet', true);
-            networkWarning.style.display = 'none';
-            statNetwork.textContent = 'Sepolia';
-            statNetwork.className = 'stat-value text-indigo';
-        } else {
-            setNetworkStatus(`Wrong Network (${currentChainId || 'Unknown'})`, false);
-            networkWarning.style.display = 'flex';
-            statNetwork.textContent = 'Wrong Net';
-            statNetwork.className = 'stat-value text-rose';
-        }
-        updateSubmitButtonState();
-    }
-
-    function setNetworkStatus(name, isValid) {
-        networkName.textContent = name;
-        if (isValid) {
-            networkBadge.className = 'badge badge-network';
-            networkBadge.onclick = null;
-        } else {
-            networkBadge.className = 'badge badge-network wrong-network';
-            networkBadge.onclick = promptSwitchToSepolia;
-        }
-    }
-
-    async function promptSwitchToSepolia() {
-        if (!window.ethereum) return;
-        try {
-            await window.ethereum.request({
-                method: 'wallet_switchEthereumChain',
-                params: [{ chainId: SEPOLIA_CHAIN_ID }]
-            });
-            showToast('Network Switched', 'Switched to Ethereum Sepolia Testnet.', 'success');
-        } catch (switchError) {
-            if (switchError.code === 4902) {
-                try {
-                    await window.ethereum.request({
-                        method: 'wallet_addEthereumChain',
-                        params: [SEPOLIA_NETWORK_PARAMS]
-                    });
-                    showToast('Network Added', 'Sepolia Testnet added and selected.', 'success');
-                } catch (addError) {
-                    console.error('Failed to add Sepolia network:', addError);
-                    showToast('Network Error', 'Failed to add Sepolia to MetaMask.', 'error');
-                }
-            } else {
-                console.error('Failed to switch network:', switchError);
-                showToast('Switch Error', switchError.message, 'error');
-            }
-        }
-    }
-
-    function updateWalletUI(account) {
-        if (account) {
-            connectWalletBtn.classList.add('connected');
-            connectWalletText.textContent = formatTruncated(account);
-            connectWalletBtn.title = `Connected: ${account}`;
-            walletPrompt.style.display = 'none';
-        } else {
-            connectWalletBtn.classList.remove('connected');
-            connectWalletText.textContent = 'Connect MetaMask';
-            connectWalletBtn.title = 'Connect with MetaMask wallet';
-            walletPrompt.style.display = 'flex';
-        }
-        updateSubmitButtonState();
-    }
-
-    function updateSubmitButtonState() {
-        if (!currentAccount) {
-            submitBtn.disabled = true;
-            submitBtnText.textContent = 'Connect Wallet to Sign';
-        } else if (currentChainId && currentChainId !== SEPOLIA_CHAIN_ID_DECIMAL) {
-            submitBtn.disabled = true;
-            submitBtnText.textContent = 'Switch to Sepolia First';
-        } else if (!activeContractAddress || !/^0x[a-fA-F0-9]{40}$/.test(activeContractAddress)) {
-            submitBtn.disabled = true;
-            submitBtnText.textContent = 'Set Contract Address First';
-        } else if (isSubmitting) {
-            submitBtn.disabled = true;
-            submitBtnText.textContent = 'Confirming in MetaMask...';
-        } else {
+            // Update UI state with connected pill styling
+            const shortAddr = `${userAddress.substring(0, 6)}...${userAddress.substring(38)}`;
+            connectWalletBtn.innerHTML = `<i class="fa-solid fa-circle-check" style="color: #10b981;"></i> <span>${shortAddr}</span>`;
+            connectWalletBtn.style.background = "var(--badge-bg)";
+            connectWalletBtn.style.border = "1px solid var(--badge-border)";
+            connectWalletBtn.style.color = "var(--text-main)";
             submitBtn.disabled = false;
-            submitBtnText.textContent = 'Sign Guestbook (.send())';
+
+            showNotification("MetaMask Wallet connected successfully to Ethereum Sepolia!", "success");
+            loadGuestbookData();
+        } catch (error) {
+            console.error(error);
+            showNotification("Wallet connection rejected or failed: " + (error.message || ""), "error");
         }
+    } else {
+        showNotification("MetaMask extension is not detected. Please install MetaMask to interact with this DApp.", "error");
+        alert("Please install MetaMask to interact with this DApp!");
+    }
+});
+
+// -----------------------------------------------------------------------------
+// 4. Refresh Button Action
+// -----------------------------------------------------------------------------
+refreshBtn.addEventListener("click", () => {
+    refreshBtn.classList.add("fa-spin");
+    setTimeout(() => refreshBtn.classList.remove("fa-spin"), 1000);
+
+    if (contract) {
+        loadGuestbookData();
+    } else if (isDemoActive) {
+        renderMessages(sampleMessages);
+        showNotification("Sample ledger refreshed.", "success");
+    } else {
+        showNotification("Please connect your MetaMask wallet first or toggle sample ledger entries.", "error");
+    }
+});
+
+// -----------------------------------------------------------------------------
+// 5. Submit Form Handler (.send() write operation)
+// -----------------------------------------------------------------------------
+guestbookForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = visitorNameInput.value.trim();
+    const message = visitorMessageInput.value.trim();
+
+    if (!name || !message) {
+        showNotification("Please fill in both name and message fields.", "error");
+        return;
     }
 
-    // ============================================================================
-    // Message Submission (.send() - Write Operation)
-    // ============================================================================
+    if (message.length > 200) {
+        showNotification("Message cannot exceed 200 characters.", "error");
+        return;
+    }
 
-    guestbookForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        if (!currentAccount) {
-            await connectWallet();
+    // Check if contract is deployed or valid
+    if (!contract || CONTRACT_ADDRESS === "YOUR_DEPLOYED_CONTRACT_ADDRESS_HERE") {
+        if (!signer) {
+            showNotification("Please connect your MetaMask wallet before signing.", "error");
             return;
         }
+        showNotification("Contract address not configured in app.js yet. Please update CONTRACT_ADDRESS with your deployed Sepolia contract.", "error");
+        return;
+    }
 
-        if (currentChainId && currentChainId !== SEPOLIA_CHAIN_ID_DECIMAL) {
-            await promptSwitchToSepolia();
-            return;
-        }
+    try {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Confirming in MetaMask...`;
+        showNotification("Please confirm the transaction in your MetaMask popup window.", "success");
 
-        if (!activeContractAddress || !/^0x[a-fA-F0-9]{40}$/.test(activeContractAddress)) {
-            openContractModalBtn.click();
-            showToast('Contract Needed', 'Please enter your deployed Sepolia contract address first.', 'info');
-            return;
-        }
+        const tx = await contract.signGuestbook(name, message);
+        
+        submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Mining on Ethereum...`;
+        showNotification(`Transaction submitted! Hash: ${tx.hash.substring(0, 10)}... Waiting for block confirmation.`, "success");
 
-        const visitorName = visitorNameInput.value.trim();
-        const message = messageInput.value.trim();
+        const receipt = await tx.wait();
 
-        // Validation
-        let hasError = false;
-        nameError.textContent = '';
-        messageError.textContent = '';
-        visitorNameInput.classList.remove('is-invalid');
-        messageInput.classList.remove('is-invalid');
+        showNotification(`
+            <strong>Transaction Confirmed!</strong> Message etched permanently onto Sepolia.<br>
+            <a href="https://sepolia.etherscan.io/tx/${receipt.transactionHash}" target="_blank">
+                <i class="fa-solid fa-external-link-alt"></i> View on Sepolia Etherscan (${receipt.transactionHash.substring(0, 12)}...)
+            </a>
+        `, "success", 10000);
 
-        if (!visitorName) {
-            nameError.textContent = 'Visitor name is required.';
-            visitorNameInput.classList.add('is-invalid');
-            hasError = true;
-        }
+        // Clear Form & Reload Feed
+        visitorNameInput.value = "";
+        visitorMessageInput.value = "";
+        charCountSpan.textContent = "0";
+        if (charBarFill) charBarFill.style.width = "0%";
+        loadGuestbookData();
 
-        if (!message) {
-            messageError.textContent = 'Message is required.';
-            messageInput.classList.add('is-invalid');
-            hasError = true;
-        } else if (message.length > 200) {
-            messageError.textContent = `Message exceeds 200 characters (Current: ${message.length}).`;
-            messageInput.classList.add('is-invalid');
-            hasError = true;
-        }
+    } catch (error) {
+        console.error(error);
+        showNotification(`Transaction failed: ${error.reason || error.message}`, "error");
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Submit to Blockchain`;
+    }
+});
 
-        if (hasError) return;
+// -----------------------------------------------------------------------------
+// 6. Load Data Function (.call() read operations)
+// -----------------------------------------------------------------------------
+async function loadGuestbookData() {
+    if (!contract) return;
+    
+    try {
+        loadingSpinner.classList.remove("hidden");
+        
+        // Fetch total count & all messages
+        const totalCount = await contract.getTotalMessages();
+        messageCountSpan.textContent = totalCount.toString();
 
-        if (!guestbookContract) {
-            instantiateContract();
-            if (!guestbookContract) {
-                showToast('Error', 'Smart contract instance is not ready.', 'error');
-                return;
-            }
-        }
+        const messages = await contract.getAllMessages();
+        currentLoadedMessages = messages;
+        
+        renderMessages(messages);
+        if (feedStatusPill) feedStatusPill.textContent = `${totalCount.toString()} On-Chain`;
+    } catch (error) {
+        console.error("Error loading guestbook data:", error);
+        showNotification("Error loading guestbook data from contract: " + (error.reason || error.message), "error");
+    } finally {
+        loadingSpinner.classList.add("hidden");
+    }
+}
 
-        try {
-            isSubmitting = true;
-            btnSpinner.style.display = 'inline-block';
-            updateSubmitButtonState();
-
-            // Reveal Transaction Status Card
-            showTxStatusCard('pending', 'Waiting for transaction signature in MetaMask...');
-
-            let txHashCaptured = null;
-
-            // Requirement 7: Use .send() for submitting messages (write operation)
-            const receipt = await guestbookContract.methods
-                .addMessage(visitorName, message)
-                .send({ from: currentAccount })
-                .on('transactionHash', (hash) => {
-                    txHashCaptured = hash;
-                    console.log('Transaction Broadcasted:', hash);
-                    updateTxCardBroadcast(hash);
-                    showToast('Transaction Sent', 'Transaction broadcasted to Sepolia! Mining...', 'info');
-                });
-
-            const finalTxHash = (receipt && receipt.transactionHash) ? receipt.transactionHash : txHashCaptured;
-
-            // Submission Success
-            showTxStatusCard('success', 'Message confirmed and permanently recorded on Ethereum Sepolia!', finalTxHash);
-            showToast('Success!', 'Your message has been added to the guestbook!', 'success');
-
-            // Clear Form inputs
-            visitorNameInput.value = '';
-            messageInput.value = '';
-            updateCounters();
-
-            // Requirement 6: Automatically refresh the message list after submission
-            await refreshMessagesWall();
-
-        } catch (err) {
-            console.error('Error submitting message via .send():', err);
-
-            if (err.code === 4001) {
-                showTxStatusCard('error', 'Transaction signature rejected by user in MetaMask.');
-                showToast('Transaction Rejected', 'You rejected the transaction in MetaMask.', 'info');
-            } else {
-                const errorMsg = err.message || 'Transaction failed on blockchain.';
-                showTxStatusCard('error', `Submission failed: ${errorMsg}`);
-                showToast('Submission Failed', errorMsg, 'error');
-            }
-        } finally {
-            isSubmitting = false;
-            btnSpinner.style.display = 'none';
-            updateSubmitButtonState();
-        }
-    });
-
-    // ============================================================================
-    // Message Retrieval (.call() - Read Operation)
-    // ============================================================================
-
-    async function refreshMessagesWall() {
-        if (!activeContractAddress || !/^0x[a-fA-F0-9]{40}$/.test(activeContractAddress)) {
-            messagesContainer.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">📍</div>
-                    <h3>Contract Address Required</h3>
-                    <p style="margin-top: 8px;">Please enter your deployed Sepolia contract address to view and sign messages.</p>
-                    <button class="btn btn-primary btn-sm" style="margin-top: 14px;" id="wallSetContractBtn">Set Contract Address</button>
+// -----------------------------------------------------------------------------
+// 7. Render Messages to DOM (Latest First with Rich UI Cards)
+// -----------------------------------------------------------------------------
+function renderMessages(messages) {
+    if (!messages || messages.length === 0) {
+        messagesContainer.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon-wrap">
+                    <i class="fa-solid fa-folder-open"></i>
                 </div>
-            `;
-            const wallBtn = document.getElementById('wallSetContractBtn');
-            if (wallBtn) wallBtn.onclick = () => openContractModalBtn.click();
-            emptyState.style.display = 'none';
-            statTotalMessages.textContent = '0';
-            messagesCountBadge.textContent = '0';
-            return;
-        }
-
-        if (!guestbookContract) {
-            instantiateContract();
-            if (!guestbookContract) return;
-        }
-
-        refreshIcon.classList.add('spin-once');
-        setTimeout(() => refreshIcon.classList.remove('spin-once'), 600);
-
-        try {
-            // Requirement 7: Use .call() for total message count
-            const totalCountRaw = await guestbookContract.methods.getTotalMessages().call();
-            const totalCount = Number(totalCountRaw);
-
-            // Update Counters (Requirement 5)
-            statTotalMessages.textContent = totalCount;
-            messagesCountBadge.textContent = totalCount;
-
-            if (totalCount === 0) {
-                messagesContainer.innerHTML = '';
-                emptyState.style.display = 'block';
-                return;
-            }
-
-            emptyState.style.display = 'none';
-
-            // Requirement 4: Retrieve all messages and display the latest messages first (totalCount - 1 down to 0)
-            const messagePromises = [];
-            for (let i = totalCount - 1; i >= 0; i--) {
-                messagePromises.push(
-                    guestbookContract.methods.getMessage(i).call().then(res => ({
-                        index: i,
-                        visitorName: res[0] ?? res.visitorName,
-                        message: res[1] ?? res.message,
-                        sender: res[2] ?? res.sender,
-                        timestamp: Number(res[3] ?? res.timestamp)
-                    }))
-                );
-            }
-
-            const messages = await Promise.all(messagePromises);
-            renderMessages(messages);
-
-        } catch (err) {
-            console.error('Error reading messages via .call():', err);
-            messagesContainer.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">⚠️</div>
-                    <h3>No Contract Code Found</h3>
-                    <p style="margin-top: 8px;">Address <code>${formatTruncated(activeContractAddress)}</code> returned no contract data on Sepolia.</p>
-                    <p style="margin-top: 4px; font-size: 0.8rem; color: #94a3b8;">Make sure your contract is deployed to Sepolia, or update the address:</p>
-                    <button class="btn btn-secondary btn-sm" style="margin-top: 14px;" id="wallRetryBtn">Change Contract Address</button>
-                </div>
-            `;
-            const retryBtn = document.getElementById('wallRetryBtn');
-            if (retryBtn) retryBtn.onclick = () => openContractModalBtn.click();
-        }
-    }
-
-    /**
-     * Render messages in the wall container
-     */
-    function renderMessages(messages) {
-        messagesContainer.innerHTML = '';
-
-        messages.forEach((item) => {
-            const card = document.createElement('div');
-            card.className = 'message-entry';
-
-            const avatarColor = getAddressColor(item.sender);
-            const initials = getInitials(item.visitorName);
-            const formattedDate = formatTimestamp(item.timestamp);
-            const relativeTime = getRelativeTime(item.timestamp);
-            const etherscanAddressUrl = `https://sepolia.etherscan.io/address/${item.sender}`;
-
-            card.innerHTML = `
-                <div class="message-meta-top">
-                    <div class="visitor-info">
-                        <div class="visitor-avatar" style="background: ${avatarColor};">
-                            ${escapeHtml(initials)}
-                        </div>
-                        <div class="visitor-name-group">
-                            <span class="visitor-name">${escapeHtml(item.visitorName)}</span>
-                            <span class="message-badge-index">Entry #${item.index + 1}</span>
-                        </div>
-                    </div>
-                    <div class="message-time" title="${formattedDate}">
-                        ${relativeTime}
-                    </div>
-                </div>
-
-                <div class="message-body">${escapeHtml(item.message)}</div>
-
-                <div class="message-meta-bottom">
-                    <a href="${etherscanAddressUrl}" target="_blank" rel="noopener noreferrer" class="sender-address" title="View sender address on Sepolia Etherscan">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
-                            <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path>
-                            <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>
-                        </svg>
-                        <span>${formatTruncated(item.sender)}</span>
-                        <span>↗</span>
-                    </a>
-                    <span class="exact-date">${formattedDate}</span>
-                </div>
-            `;
-
-            messagesContainer.appendChild(card);
-        });
-    }
-
-    // ============================================================================
-    // Transaction Card Helpers
-    // ============================================================================
-
-    function showTxStatusCard(status, message, txHash = null) {
-        txInfoCard.style.display = 'block';
-        txTime.textContent = 'Just now';
-        txStatusMessage.textContent = message;
-
-        if (status === 'pending') {
-            txStatusBadge.className = 'tx-status-badge';
-            txStatusBadge.textContent = 'Pending';
-            txHashRow.style.display = 'none';
-        } else if (status === 'success') {
-            txStatusBadge.className = 'tx-status-badge success';
-            txStatusBadge.textContent = 'Confirmed';
-            if (txHash) {
-                updateTxCardBroadcast(txHash);
-            }
-        } else if (status === 'error') {
-            txStatusBadge.className = 'tx-status-badge error';
-            txStatusBadge.textContent = 'Failed';
-            txHashRow.style.display = 'none';
-        }
-    }
-
-    function updateTxCardBroadcast(txHash) {
-        txHashRow.style.display = 'flex';
-        txHashText.textContent = txHash;
-        etherscanTxLink.href = `https://sepolia.etherscan.io/tx/${txHash}`;
-
-        copyTxHashBtn.onclick = () => {
-            navigator.clipboard.writeText(txHash);
-            showToast('Copied', 'Transaction hash copied to clipboard!', 'info');
-        };
-    }
-
-    // ============================================================================
-    // Form Validation & Counter Helpers
-    // ============================================================================
-
-    visitorNameInput.addEventListener('input', () => {
-        nameCounter.textContent = `${visitorNameInput.value.length} / 50`;
-        if (visitorNameInput.value.trim().length > 0) {
-            nameError.textContent = '';
-            visitorNameInput.classList.remove('is-invalid');
-        }
-    });
-
-    messageInput.addEventListener('input', updateCounters);
-
-    function updateCounters() {
-        const len = messageInput.value.length;
-        charCounter.textContent = `${len} / 200`;
-
-        if (len >= 200) {
-            charCounter.className = 'char-counter counter-limit';
-        } else if (len >= 170) {
-            charCounter.className = 'char-counter counter-warning';
-        } else {
-            charCounter.className = 'char-counter';
-        }
-
-        if (messageInput.value.trim().length > 0) {
-            messageError.textContent = '';
-            messageInput.classList.remove('is-invalid');
-        }
-    }
-
-    // ============================================================================
-    // Contract Address Modal
-    // ============================================================================
-
-    function updateContractAddressUI() {
-        if (!activeContractAddress || !/^0x[a-fA-F0-9]{40}$/.test(activeContractAddress)) {
-            navContractAddr.textContent = 'Not Set (Click to set)';
-            defaultContractDisplay.textContent = 'No default address set';
-            customContractInput.value = '';
-            footerContractLink.href = 'https://sepolia.etherscan.io';
-            if (statContractMeta) statContractMeta.textContent = 'Click to set';
-            return;
-        }
-
-        navContractAddr.textContent = formatTruncated(activeContractAddress);
-        defaultContractDisplay.textContent = DEFAULT_CONTRACT_ADDRESS || 'None';
-        customContractInput.value = activeContractAddress;
-        footerContractLink.href = `https://sepolia.etherscan.io/address/${activeContractAddress}`;
-        if (statContractMeta) {
-            statContractMeta.textContent = formatTruncated(activeContractAddress);
-        }
-    }
-
-    openContractModalBtn.addEventListener('click', () => {
-        customContractInput.value = activeContractAddress || '';
-        contractModalError.textContent = '';
-        contractModal.style.display = 'flex';
-    });
-
-    closeContractModalBtn.addEventListener('click', () => {
-        contractModal.style.display = 'none';
-    });
-
-    cancelContractModalBtn.addEventListener('click', () => {
-        contractModal.style.display = 'none';
-    });
-
-    resetContractBtn.addEventListener('click', () => {
-        customContractInput.value = DEFAULT_CONTRACT_ADDRESS || '';
-        contractModalError.textContent = '';
-    });
-
-    saveContractModalBtn.addEventListener('click', async () => {
-        const entered = customContractInput.value.trim();
-        if (!/^0x[a-fA-F0-9]{40}$/.test(entered)) {
-            contractModalError.textContent = 'Please enter a valid 42-character Ethereum address (starts with 0x).';
-            return;
-        }
-
-        if (setActiveContractAddress) {
-            setActiveContractAddress(entered);
-        }
-        activeContractAddress = entered;
-        updateContractAddressUI();
-        instantiateContract();
-        updateSubmitButtonState();
-        contractModal.style.display = 'none';
-        showToast('Contract Updated', `Active contract: ${formatTruncated(entered)}`, 'success');
-        await refreshMessagesWall();
-    });
-
-    contractModal.addEventListener('click', (e) => {
-        if (e.target === contractModal) {
-            contractModal.style.display = 'none';
-        }
-    });
-
-    // ============================================================================
-    // Event Listeners
-    // ============================================================================
-
-    function setupEventListeners() {
-        connectWalletBtn.addEventListener('click', connectWallet);
-        switchNetworkBtn.addEventListener('click', promptSwitchToSepolia);
-        refreshBtn.addEventListener('click', refreshMessagesWall);
-    }
-
-    // ============================================================================
-    // UI & Formatting Utilities
-    // ============================================================================
-
-    function formatTruncated(addr) {
-        if (!addr || addr.length < 10) return addr || '';
-        return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
-    }
-
-    function formatTimestamp(epochSeconds) {
-        if (!epochSeconds) return 'Unknown date';
-        const date = new Date(epochSeconds * 1000);
-        return date.toLocaleString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    }
-
-    function getRelativeTime(epochSeconds) {
-        if (!epochSeconds) return '';
-        const now = Math.floor(Date.now() / 1000);
-        const diff = Math.max(0, now - epochSeconds);
-
-        if (diff < 60) return 'Just now';
-        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-        if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-        return `${Math.floor(diff / 604800)}w ago`;
-    }
-
-    function getInitials(name) {
-        if (!name) return '?';
-        const parts = name.trim().split(/\s+/);
-        if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-
-    function getAddressColor(address) {
-        if (!address) return '#6366f1';
-        let hash = 0;
-        for (let i = 0; i < address.length; i++) {
-            hash = address.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        const hue1 = Math.abs(hash % 360);
-        const hue2 = (hue1 + 40) % 360;
-        return `linear-gradient(135deg, hsl(${hue1}, 75%, 55%), hsl(${hue2}, 85%, 45%))`;
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
-
-    /**
-     * Toast Notification System
-     */
-    function showToast(title, message, type = 'info') {
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-
-        let icon = 'ℹ️';
-        if (type === 'success') icon = '✅';
-        if (type === 'error') icon = '❌';
-
-        toast.innerHTML = `
-            <span class="toast-icon">${icon}</span>
-            <div class="toast-content">
-                <div class="toast-title">${escapeHtml(title)}</div>
-                <div class="toast-msg">${escapeHtml(message)}</div>
+                <p>No messages recorded yet on the blockchain ledger. Be the first to sign!</p>
             </div>
         `;
-
-        toastContainer.appendChild(toast);
-
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateY(10px) scale(0.95)';
-            setTimeout(() => toast.remove(), 300);
-        }, 4500);
+        return;
     }
-})();
+
+    messagesContainer.innerHTML = "";
+    
+    // Reverse array to show latest messages first
+    const reversedMessages = [...messages].reverse();
+
+    reversedMessages.forEach((msg, idx) => {
+        const timestampMs = typeof msg.timestamp.toNumber === "function" 
+            ? msg.timestamp.toNumber() * 1000 
+            : Number(msg.timestamp) * 1000;
+        
+        const dateObj = new Date(timestampMs);
+        const formattedDate = dateObj.toLocaleDateString(undefined, { 
+            month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' 
+        });
+        
+        const shortAddr = `${msg.sender.substring(0, 6)}...${msg.sender.substring(38)}`;
+        const avatarGradient = getAvatarGradient(msg.name || "A");
+        const initial = (msg.name && msg.name.trim().length > 0) ? msg.name.trim().charAt(0).toUpperCase() : "0x";
+
+        const msgCard = document.createElement("div");
+        msgCard.className = "msg-item";
+        msgCard.setAttribute("data-author", (msg.name || "").toLowerCase());
+        msgCard.setAttribute("data-sender", (msg.sender || "").toLowerCase());
+        msgCard.setAttribute("data-message", (msg.message || "").toLowerCase());
+
+        msgCard.innerHTML = `
+            <div class="msg-header-row">
+                <div class="msg-author-group">
+                    <div class="author-avatar" style="background: ${avatarGradient};">${escapeHtml(initial)}</div>
+                    <span class="msg-author">${escapeHtml(msg.name)} <span class="author-verified-tag"><i class="fa-solid fa-certificate"></i> Verified</span></span>
+                </div>
+                <span class="msg-time"><i class="fa-regular fa-clock"></i> ${formattedDate}</span>
+            </div>
+            <div class="msg-body">"${escapeHtml(msg.message)}"</div>
+            <div class="msg-footer-row">
+                <div class="msg-sender-info">
+                    <i class="fa-solid fa-wallet"></i>
+                    <span>Sender:</span>
+                    <code>${shortAddr}</code>
+                    <button type="button" class="copy-btn" title="Copy full address" onclick="copyAddressToClipboard('${msg.sender}')">
+                        <i class="fa-regular fa-copy"></i>
+                    </button>
+                </div>
+                <a href="https://sepolia.etherscan.io/address/${msg.sender}" target="_blank" rel="noopener noreferrer">
+                    Sepolia Explorer <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                </a>
+            </div>
+        `;
+        messagesContainer.appendChild(msgCard);
+    });
+}
+
+// -----------------------------------------------------------------------------
+// 8. Search & Filter Ledger
+// -----------------------------------------------------------------------------
+if (searchInput) {
+    searchInput.addEventListener("input", (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        const cards = messagesContainer.querySelectorAll(".msg-item");
+        
+        cards.forEach(card => {
+            const author = card.getAttribute("data-author") || "";
+            const sender = card.getAttribute("data-sender") || "";
+            const text = card.getAttribute("data-message") || "";
+            
+            if (author.includes(query) || sender.includes(query) || text.includes(query)) {
+                card.style.display = "flex";
+            } else {
+                card.style.display = "none";
+            }
+        });
+    });
+}
+
+// -----------------------------------------------------------------------------
+// 9. Interactive Sample Ledger for Instant Review / Demo
+// -----------------------------------------------------------------------------
+const sampleMessages = [
+    {
+        sender: "0x71C679313824b42b47D7Ddf520443900996D894D",
+        name: "Mohib Ul Hassan",
+        message: "Excited to test the decentralized guestbook! Smart contracts on Sepolia are fast and secure. 🚀",
+        timestamp: Math.floor(Date.now() / 1000) - 300
+    },
+    {
+        sender: "0x3A54B98E2F3a1b023F0B9C9B4d11B3e75C418c39",
+        name: "Satoshi Nakamoto",
+        message: "Trust the math, not the middleman. Decentralization is the cornerstone of cryptography.",
+        timestamp: Math.floor(Date.now() / 1000) - 3600
+    },
+    {
+        sender: "0x98b8A4Fe3659Db8fDb55A6a297bcfA61dE3524E1",
+        name: "Elena Rostova",
+        message: "Permanent inscription verified on block #5421908. Beautiful UI and seamless Web3 UX!",
+        timestamp: Math.floor(Date.now() / 1000) - 14400
+    }
+];
+
+if (previewDemoBtn) {
+    previewDemoBtn.addEventListener("click", () => {
+        isDemoActive = !isDemoActive;
+        if (isDemoActive) {
+            currentLoadedMessages = sampleMessages;
+            messageCountSpan.textContent = sampleMessages.length.toString();
+            renderMessages(sampleMessages);
+            previewDemoBtn.innerHTML = `<i class="fa-solid fa-xmark"></i> Clear Sample Entries`;
+            if (feedStatusPill) feedStatusPill.textContent = "Demo Ledger (3)";
+            showNotification("Showing sample on-chain entries for UI demonstration.", "success");
+        } else {
+            currentLoadedMessages = [];
+            messageCountSpan.textContent = "0";
+            renderMessages([]);
+            previewDemoBtn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Toggle Sample Ledger Entries`;
+            if (feedStatusPill) feedStatusPill.textContent = "Live Blocks";
+            showNotification("Sample entries cleared.", "success");
+        }
+    });
+}
+
+// -----------------------------------------------------------------------------
+// 10. Helper Utilities: Notifications, Clipboard, Avatars, XSS Escaping
+// -----------------------------------------------------------------------------
+let notificationTimeout = null;
+
+function showNotification(msg, type = "success", duration = 6000) {
+    if (!notificationArea) return;
+    
+    if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+    }
+
+    notificationArea.className = type;
+    
+    const icon = type === "success" 
+        ? '<i class="fa-solid fa-circle-check"></i>' 
+        : '<i class="fa-solid fa-triangle-exclamation"></i>';
+
+    notificationArea.innerHTML = `
+        <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+            <span style="font-size: 1.1rem; margin-top: 1px;">${icon}</span>
+            <div style="flex: 1;">${msg}</div>
+        </div>
+    `;
+    
+    notificationArea.classList.remove("hidden");
+
+    notificationTimeout = setTimeout(() => {
+        notificationArea.classList.add("hidden");
+    }, duration);
+}
+
+function copyAddressToClipboard(address) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(address).then(() => {
+            showNotification(`Copied address <code style="font-family:monospace;">${address.substring(0,8)}...</code> to clipboard!`, "success", 2500);
+        }).catch(err => {
+            console.error("Clipboard copy error:", err);
+        });
+    } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = address;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        showNotification(`Copied address to clipboard!`, "success", 2500);
+    }
+}
+
+// Generate pleasing consistent gradient avatar per name
+function getAvatarGradient(name) {
+    const gradients = [
+        "linear-gradient(135deg, #6366f1, #06b6d4)",
+        "linear-gradient(135deg, #ec4899, #8b5cf6)",
+        "linear-gradient(135deg, #10b981, #059669)",
+        "linear-gradient(135deg, #f59e0b, #d97706)",
+        "linear-gradient(135deg, #3b82f6, #1d4ed8)",
+        "linear-gradient(135deg, #f43f5e, #be123c)"
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % gradients.length;
+    return gradients[index];
+}
+
+// Helper to prevent XSS injection in messages
+function escapeHtml(str) {
+    if (!str) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
